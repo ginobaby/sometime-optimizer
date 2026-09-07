@@ -36,4 +36,5 @@ The new tool deliberately does not guess old values or claim to repair old damag
 
 ## GitHub dependencies
 
-The original references QuakedK/Oneclick tools and GPU profiles, QuakedK/Downloads dControl, Orbmu2k/nvidiaProfileInspector and LordOfMice/hidusbf, among other vendor installers. No external tools were downloaded or executed. The linked NVIDIA profile was read as text to investigate the reported display bug; see [NVIDIA display recovery](NVIDIA-DISPLAY.md). The ZIP contents were not supplied or inspected, so no claims are made about their safety or licenses. The replacement needs only the files in this repository; it never fetches code at runtime.
+The original references QuakedK/Oneclick tools and GPU profiles, QuakedK/Downloads dControl, Orbmu2k/nvidiaProfileInspector and LordOfMice/hidusbf, among other vendor installers. No external tools were downloaded or executed. The linked NVIDIA profile was read as text to investigate the reported display bug; see [NVIDIA display recovery](NVIDIA-DISPLAY.md). The ZIP contents were not supplied or inspected, so no claims are made about their safety or licenses. The preference tweaks need only repository files. A subsequent user-requested optional MAS launcher is a separate, explicitly warned remote-code path; see the README. Its payload is not covered by this audit or undo.
+

@@ -124,3 +124,4 @@ function Undo-Tweaks([string]$StateDirectory) {
     Restore-Journal $journal $path
     return 'Original setting values restored and verified.'
 }
+

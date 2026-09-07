@@ -2,6 +2,7 @@
 [CmdletBinding()]
 param([switch]$Preview, [string[]]$Tweaks)
 . (Join-Path $PSScriptRoot 'Core.ps1')
+. (Join-Path $PSScriptRoot 'Activation.ps1')
 $mutex = $null; $locked = $false
 try {
     if ($Preview) {
@@ -20,10 +21,10 @@ try {
     try { $locked = $mutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $locked = $true }
     if (-not $locked) { throw 'Another optimiser window is open. Close it first.' }
     $state = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'SometimeOptimizer\25H2'
-    Write-Host 'No changes happen until you choose settings and type APPLY. No FPS gain is guaranteed.'
+    Write-Host 'Tweaks require APPLY. The separate activation launcher requires LAUNCH MAS. No FPS gain is guaranteed.'
     Write-Host 'Undo covers this version only; it cannot repair damage from the old batch file.' -ForegroundColor Yellow
     while ($true) {
-        Write-Host "`n1 Choose and preview tweaks`n2 Undo this version's changes`n3 Windows settings and maintenance`n4 View backup location`n5 NVIDIA display recovery guide`n0 Exit"
+        Write-Host "`n1 Choose and preview tweaks`n2 Undo this version's changes`n3 Windows settings and maintenance`n4 View backup location`n5 NVIDIA display recovery guide`n6 Third-party activation launcher (warning)`n7 Windows Activation settings`n0 Exit"
         switch (Read-Host 'Choose') {
             '1' {
                 try {
@@ -65,10 +66,16 @@ try {
             }
             '4' { Write-Host $state }
             '5' { Get-Content -LiteralPath (Join-Path $PSScriptRoot 'NVIDIA-DISPLAY.md') | Out-Host }
+            '6' { Show-ActivationOption }
+            '7' {
+                try { Start-Process 'ms-settings:activation' }
+                catch { Write-Host $_.Exception.Message -ForegroundColor Red }
+            }
             '0' { exit 0 }
             default { Write-Host 'Choose one of the listed options.' }
         }
     }
 } catch { Write-Host $_.Exception.Message -ForegroundColor Red; exit 1 }
 finally { if ($locked) { $mutex.ReleaseMutex() }; if ($null -ne $mutex) { $mutex.Dispose() } }
+
 

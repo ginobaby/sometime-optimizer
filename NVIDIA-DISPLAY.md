@@ -25,3 +25,4 @@ On a laptop whose internal display is driven by integrated graphics, NVIDIA may 
 - [NVIDIA scaling controls](https://www.nvidia.com/content/Control-Panel-Help/vLatest/en-us/mergedProjects/nvdsp/Adjust_Desktop_Size_and_Position_-_Windows_Vista_and_Later.htm)
 - [NVIDIA Manage 3D Settings](https://www.nvidia.com/content/Control-Panel-Help/vLatest/en-us/mergedProjects/3D%20Settings/Manage_3D_Settings_%28reference%29.htm)
 - [NVIDIA change resolution](https://nvidia.custhelp.com/app/answers/detail/a_id/97/~/how-do-i-change-my-display-resolution)
+

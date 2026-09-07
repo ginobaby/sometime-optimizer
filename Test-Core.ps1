@@ -64,7 +64,21 @@ $blocked = Join-Path $testRoot 'blocked'
 $before=$script:writes
 Assert-Throws { Invoke-Tweaks -Ids @('mouse') -StateDirectory $blocked } 'Access'
 Assert ($before -eq $script:writes) 'Backup failure prevents writes'
-$executable = (Get-Content (Join-Path $PSScriptRoot 'Optimizer.ps1') -Raw) + (Get-Content (Join-Path $PSScriptRoot 'Core.ps1') -Raw) + (Get-Content (Join-Path $PSScriptRoot 'main 1.bat') -Raw)
-Assert ($executable -notmatch '(?i)importProfile|nvidiaProfileInspector|PowerMizer|nvlddmkm|ChangeDisplaySettings|SetDisplayConfig|PreferredRefreshRate|curl\s|Invoke-WebRequest|Invoke-RestMethod|bcdedit|wmic\s|NSudo|Remove-AppxPackage') 'No NVIDIA imports/display writes, downloads, boot edits or legacy debloat in executable files'
+$executable = (Get-Content (Join-Path $PSScriptRoot 'Sometime.ps1') -Raw) + (Get-Content (Join-Path $PSScriptRoot 'Core.ps1') -Raw) + (Get-Content (Join-Path $PSScriptRoot 'main 1.bat') -Raw)
+Assert ($executable -notmatch '(?i)importProfile|nvidiaProfileInspector|PowerMizer|nvlddmkm|ChangeDisplaySettings|SetDisplayConfig|PreferredRefreshRate|curl\s|Invoke-WebRequest|Invoke-RestMethod|bcdedit|wmic\s|NSudo|Remove-AppxPackage') 'No NVIDIA imports/display writes, downloads, boot edits or legacy debloat in preference core/runner'
+. (Join-Path $PSScriptRoot 'Activation.ps1')
+$script:launches=0
+$script:answer=''
+function Read-Host { param($Prompt); return $script:answer }
+function Start-MasProcess { $script:launches++; return [pscustomobject]@{ ExitCode=0 } }
+Show-ActivationOption
+Assert ($script:launches -eq 0) 'Activation cancellation never launches remote code'
+$script:answer='yes'
+Show-ActivationOption
+Assert ($script:launches -eq 0) 'Activation requires exact confirmation'
+$script:answer='LAUNCH MAS'
+Show-ActivationOption
+Assert ($script:launches -eq 1) 'Confirmed activation invokes isolated launcher once (mocked)'
 Write-Host 'All isolated tests passed. No real registry writes or optimiser actions were executed.'
+
 
