@@ -1,56 +1,63 @@
-# SOMETIME Optimizer — Windows 11 25H2
+# SOMETIME - Windows 11 25H2
 
-An opt-in replacement for the supplied SOMETIME/Oneclick batch optimiser. The preference tweaks work offline; the separately confirmed activation launcher requires internet access. It targets Windows 11 **25H2 client build 26200** and uses Windows PowerShell 5.1 and CIM instead of WMIC. This is a conservative preferences tool, not a promise of extra FPS.
+This edition returns to the supplied **main 1.bat**: the original SOMETIME banner, sequential screens, appearance/privacy/input tweaks and broader cleanup flow. It does not use the earlier six-preference menu.
 
 ## Run
 
-Download the whole repository as a ZIP and extract it. Double-click **main 1.bat** normally, **without** administrator privileges. Keep `Sometime.ps1`, `Core.ps1` and `Activation.ps1` alongside it. Choose options, read their warnings, then type `APPLY`. Nothing applies automatically.
+1. Choose **Code > Download ZIP** on GitHub and extract all files together.
+2. Double-click **main 1.bat** and accept the administrator prompt for your own Windows account.
+3. Read the warning screen. After 10 seconds the run starts automatically; Ctrl+C cancels before it starts. There is no numbered menu or per-tweak selection.
 
-The launcher uses `RemoteSigned` only for its PowerShell process; it does not change the machine execution policy. Downloaded scripts may be blocked until you review them and use Properties → Unblock on the downloaded ZIP before extracting. Organisation policy may still prohibit scripts; this tool does not override it.
+Keep `Sometime.ps1`, `Activation.ps1` and `Apps.txt` next to the batch file. `Sometime.ps1` provides checked helper stages; the main batch contains the original preference commands. Downloaded scripts may require Properties > Unblock on the ZIP before extraction after review. The launcher uses a process-scoped RemoteSigned policy and does not override organisation policy.
 
-Read-only preview, also available on other Windows builds:
+## Included
+
+- 68 native registry commands based on the original: activity history, location, notifications, Sticky Keys shortcut behavior, Num Lock, classic context menu, file extensions/hidden files, widgets/taskbar, animation/performance appearance, Game DVR, Game Mode, transparency, mouse acceleration, hibernation, privacy/suggestions and dark theme.
+- **Windows Update service disabling and Defender real-time protection disabling retained at the owner's request.** This reduces malware protection and security updates. Protected services or tamper protection may block these changes, and Windows may later restore them. The tool reports partial failure rather than claiming permanent disablement.
+- Selected background services: diagnostic telemetry, offline maps, retail demo, remote registry and fax. Dependent features stop working.
+- 44 app-name patterns from the original removal list, applied to the current user. Read/edit **Apps.txt** before running if you use those apps. Store, codecs, core sign-in and driver-control packages are excluded. App removal can lose app data/features and reinstallation may need Store access/licensing.
+- Microsoft Visual C++ x64 runtime installation if absent, using Microsoft's endpoint and a valid Microsoft Authenticode signature before execution.
+- Built-in High performance power plan only if already available and AC power is detected. Hibernation/Fast Startup are disabled by the original preferences. Higher power usage, heat and fan noise are possible.
+- Temp files older than seven days and DNS cache cleanup. Reparse points are skipped; system folders, update stores, logs and Prefetch are not deleted.
+
+No FPS gain is guaranteed. Windows edition, policy and cumulative updates can affect whether individual preferences work. This is targeted at Windows 11 25H2 client build 26200; other builds are blocked.
+
+## Display and destructive changes removed
+
+The NVIDIA profile import is removed along with hard-coded GPU registry/interrupt changes. The run does not force resolution, refresh rate, scaling, HAGS or driver profiles. Read [NVIDIA-DISPLAY.md](NVIDIA-DISPLAY.md) if an earlier import already affected your display.
+
+System-component deletion, ownership/security-descriptor bypasses, blanket essential-service disabling, core-process priority changes, boot timer tweaks, obsolete WMIC resets and forced restart are removed. Existing damage from the original script is not automatically repaired.
+
+## Screens, errors and recovery
+
+Screens clear between sections. Cyan/magenta identify stages, yellow highlights risks or partial failure, green marks checked success, and red marks errors. This clears the visible console only, not shell history or logs. Registry command output and helper transcripts are saved locally; the final screen shows the log and backup paths and flags failed steps.
+
+Before tweaks, the program saves registry exports, a manifest of absent keys, selected service states, Defender's previous preference and the active power-plan ID under `%LOCALAPPDATA%\SometimeOptimizer\OriginalFlow\<run-id>`. These local files are never uploaded. It enables System Protection and creates a restore point, or explicitly reports reuse of a point from the previous 24 hours. If backup/restore-point preparation fails, it stops before the tweak sequence.
+
+**Undo Sometime.bat opens Windows System Restore. It is not an exact automatic undo of this broader edition.** Restore points may predate other changes and do not back up personal/app data. Registry exports are reference snapshots: importing them can overwrite later changes and does not automatically remove newly created values. Deleted temp files, removed apps and third-party activation are not covered by those snapshots. Keep a separate backup of important data.
+
+No automatic restart occurs. Save work and restart at a convenient time. Check Windows Security and Windows Update afterward, especially if a disable step was blocked.
+
+## Optional activation
+
+**Activate Sometime.bat** opens a separate warned launcher and requires **LAUNCH MAS** before executing the requested `irm https://get.activated.win/ | iex` command. It opens the MAS menu, not unattended activation. It does not run as part of optimisation.
+
+The third-party script downloads additional code and requests administrator access; its content can change. Its full payload was not audited or executed during development. Activation/licensing and other changes are outside the backup scope. Use only with appropriate licence rights and check activation in Windows Settings afterward.
+
+## Validation
+
+Read-only preview:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\Sometime.ps1 -Preview
 ```
 
-## Features
-
-- Individually select visible file extensions, transparency, taskbar animations, classic menu delay, pointer acceleration and dark app theme.
-- Every option displays its tradeoff before confirmation. Some registry preferences may be ignored or reset by Windows updates.
-- Built-in Settings shortcuts for startup apps, Game Mode, graphics, captures, storage, power, updates and installed apps. Changes made there are manual and outside this tool's undo.
-- Existing registry values and types are saved **before** writes; each write is read back. A failed apply attempts rollback and reports incomplete recovery.
-- One active selection at a time prevents overwriting your original backup. Undo before choosing a different set.
-- The preference tweaks do not download tools, change services/security/drivers, remove apps/files, restart Windows or elevate. The optional third-party activation tool has a separate scope described below.
-
-## Optional activation launcher
-
-Menu **6** displays a warning and requires the exact text **LAUNCH MAS** before running the requested `irm https://get.activated.win/ | iex` command in a separate PowerShell process. It opens the third-party MAS menu; this command alone is **not unattended activation**. No activation method is preselected and it never launches at optimiser startup or during preview/apply/undo. Menu **7** opens Windows' own Activation settings.
-
-The remote launcher downloads additional code and requests administrator access. Its current content can change; the full tool has not been audited or run during development. Its activation/licensing and other system changes are **outside this optimiser's backup/undo**. Review the tool and use it only with appropriate licence rights. A successful launcher exit does not establish successful activation: check Windows Activation settings. This optional integration is the only runtime remote-code execution path.
-
-## Undo and limits
-
-Choose menu option 2 and type `UNDO`. Originals are stored in `%LOCALAPPDATA%\SometimeOptimizer\25H2\active.clixml`, bound to this computer and Windows user. Keep that folder. Undo restores exact saved values, including removing values that originally did not exist; harmless empty registry keys can remain. It replaces subsequent manual edits to those same values. Save work and sign out/in to refresh preferences.
-
-If interrupted, reopen and use Undo before another apply. If undo reports an error, preserve the backup and retry after resolving the error. Backups are local settings snapshots, **not system restore points or full system backups**.
-
-**This version cannot undo the old script.** That script deletes Windows files, tasks and app components without recoverable backups. If it has already run, see [the audit and recovery notes](AUDIT.md).
-
-## Validation
+Isolated tests:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\Test-Core.ps1
 ```
 
-Tests replace registry access with an in-memory implementation and create only ignored `.test-output` files. They cover backup/undo, interrupted and failed operations, version checks and malformed backups. They do not establish driver compatibility or performance gains. Actual Windows 11 25H2 apply/undo and Settings behavior still need checking in a disposable VM before distributing a release.
+The tests parse scripts, check the batch flow and use mocked service, Defender and activation commands. They never apply actual tweaks. Live 25H2 apply/recovery and hardware testing remain outstanding; passing these tests is not a stability or performance guarantee. `Core.ps1` is a retired file from the earlier edition and is not used.
 
-## Origin
-
-The supplied file identifies itself as SOMETIME and credits Oneclick/QuakedK, CTT and Privacy is Freedom sections. The original is retained locally as `archive/original-main.bat.txt`, excluded from Git and uploads. No external tools or profiles are redistributed. No upstream license was supplied; the archive has not been relicensed.
-
-Repository: https://github.com/ginobaby/sometime-optimizer
-
-For the reported NVIDIA Hz/scaling reset, see [NVIDIA display recovery](NVIDIA-DISPLAY.md), also available in menu option 5. The old profile import has been removed; existing driver settings require separate recovery.
-
-
+The original user-supplied file credits SOMETIME, Oneclick/QuakedK, CTT and Privacy is Freedom. A local archive is excluded from publication. No external profile/tool ZIP is redistributed. See [AUDIT.md](AUDIT.md) for the original review and scope changes.

@@ -3,4 +3,7 @@ archive/
 *.clixml
 *.tmp
 *.zip
+*.log
+*.reg
+Build-OriginalFlow.ps1
 

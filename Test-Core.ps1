@@ -1,84 +1,65 @@
-# Tests use an in-memory registry replacement. No Windows settings are changed.
-$ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot 'Core.ps1')
-$script:values = @{}
-$script:writes = 0
-$script:failId = ''
-function Get-IdentityTag { 'test-user@test-machine' }
-function Read-Setting($Tweak) {
-    if ($script:values.ContainsKey($Tweak.Id)) { return $script:values[$Tweak.Id] }
-    [pscustomobject]@{ Id=$Tweak.Id; Exists=$false; Kind=$null; Value=$null }
-}
-function Write-Setting($Tweak, $Setting) {
-    $script:writes++
-    if ($script:failId -eq $Tweak.Id) { $script:failId=''; throw 'Injected write failure' }
-    $script:values[$Tweak.Id] = [pscustomobject]@{ Id=$Tweak.Id; Exists=$Setting.Exists; Kind=$Setting.Kind; Value=$Setting.Value }
-}
-function Assert($Condition, $Message) { if (-not $Condition) { throw "FAIL: $Message" }; Write-Host "PASS: $Message" }
-function Assert-Throws([scriptblock]$Action, [string]$Pattern) {
+# Isolated checks: no optimiser stages or security changes are run on this PC.
+$ErrorActionPreference='Stop'
+. (Join-Path $PSScriptRoot 'Sometime.ps1') -Library
+function Assert($Condition,[string]$Message){if(-not $Condition){throw "FAIL: $Message"};Write-Host "PASS: $Message"}
+function Assert-Throws([scriptblock]$Body,[string]$Pattern){
     $caught=$false
-    try { & $Action | Out-Null } catch { if ($_.Exception.Message -notlike "*$Pattern*") { throw }; $caught=$true }
-    Assert $caught "Rejects: $Pattern"
+    try{& $Body | Out-Null}catch{if($_.Exception.Message -notlike "*$Pattern*"){throw};$caught=$true}
+    Assert $caught "Reports $Pattern"
 }
-$testRoot = Join-Path $PSScriptRoot ('.test-output\' + [guid]::NewGuid().ToString())
-$state = Join-Path $testRoot 'normal'
-$preview = @(Invoke-Tweaks -Ids @('extensions','mouse') -StateDirectory $state -Preview)
-Assert ($preview.Count -eq 2 -and $script:writes -eq 0 -and -not (Test-Path $state)) 'Preview makes no registry or filesystem changes'
-Assert-Throws { Invoke-Tweaks -Ids @('invalid') -StateDirectory $state } 'Unknown tweak'
-Assert (Test-SupportedOS ([pscustomobject]@{ ProductType=1; BuildNumber='26200' })) '25H2 client accepted'
-Assert (-not (Test-SupportedOS ([pscustomobject]@{ ProductType=3; BuildNumber='26200' }))) 'Server rejected'
-Assert (-not (Test-SupportedOS ([pscustomobject]@{ ProductType=1; BuildNumber='26100' }))) 'Other builds rejected'
-$script:values['extensions'] = [pscustomobject]@{ Id='extensions'; Exists=$true; Kind='DWord'; Value=1 }
-Invoke-Tweaks -Ids @('extensions','extensions','mouse') -StateDirectory $state | Out-Null
-Assert ($script:writes -eq 2) 'Duplicate choices apply once'
-Assert ($script:values['extensions'].Value -eq 0) 'Selected setting applied'
-Assert-Throws { Invoke-Tweaks -Ids @('extensions') -StateDirectory $state } 'active backup'
-Undo-Tweaks $state | Out-Null
-Assert ($script:values['extensions'].Value -eq 1) 'Original DWORD restored'
-Assert (-not $script:values['mouse'].Exists) 'Originally absent value removed on undo'
-$before = $script:writes
-Undo-Tweaks $state | Out-Null
-Assert ($before -eq $script:writes) 'Repeated undo makes no writes'
-Invoke-Tweaks -Ids @('mouse') -StateDirectory $state | Out-Null
-Undo-Tweaks $state | Out-Null
-Assert (@(Get-ChildItem $state -Filter '*.clixml').Count -eq 2) 'Prior restored backup retained'
-$script:failId='mouse'
-$failureState = Join-Path $testRoot 'failure'
-Assert-Throws { Invoke-Tweaks -Ids @('extensions','mouse') -StateDirectory $failureState } 'Original values restored'
-Assert ($script:values['extensions'].Value -eq 1) 'Partial failure automatically rolled back'
-$journal = Read-Journal (Join-Path $failureState 'active.clixml')
-$journal.Status='Pending'
-Save-Journal $journal (Join-Path $failureState 'active.clixml')
-Undo-Tweaks $failureState | Out-Null
-Assert ((Read-Journal (Join-Path $failureState 'active.clixml')).Status -eq 'Restored') 'Interrupted transaction can be undone'
-$journal.Identity='different-user'
-Save-Journal $journal (Join-Path $failureState 'active.clixml')
-Assert-Throws { Undo-Tweaks $failureState } 'another user/computer'
-$journal.Identity=Get-IdentityTag
-$journal.Entries[0].Id='unknown-path'
-Save-Journal $journal (Join-Path $failureState 'active.clixml')
-Assert-Throws { Undo-Tweaks $failureState } 'Invalid or duplicate'
-$blocked = Join-Path $testRoot 'blocked'
-[void][IO.Directory]::CreateDirectory($blocked)
-[void][IO.Directory]::CreateDirectory((Join-Path $blocked 'active.clixml.tmp'))
-$before=$script:writes
-Assert-Throws { Invoke-Tweaks -Ids @('mouse') -StateDirectory $blocked } 'Access'
-Assert ($before -eq $script:writes) 'Backup failure prevents writes'
-$executable = (Get-Content (Join-Path $PSScriptRoot 'Sometime.ps1') -Raw) + (Get-Content (Join-Path $PSScriptRoot 'Core.ps1') -Raw) + (Get-Content (Join-Path $PSScriptRoot 'main 1.bat') -Raw)
-Assert ($executable -notmatch '(?i)importProfile|nvidiaProfileInspector|PowerMizer|nvlddmkm|ChangeDisplaySettings|SetDisplayConfig|PreferredRefreshRate|curl\s|Invoke-WebRequest|Invoke-RestMethod|bcdedit|wmic\s|NSudo|Remove-AppxPackage') 'No NVIDIA imports/display writes, downloads, boot edits or legacy debloat in preference core/runner'
+$tokens=$null;$parseErrors=$null
+foreach($file in @('Sometime.ps1','Activation.ps1','Test-Core.ps1')){
+    [void][Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot $file),[ref]$tokens,[ref]$parseErrors)
+    Assert (-not $parseErrors.Count) "$file parses"
+}
+Assert (Test-25H2 ([pscustomobject]@{ProductType=1;BuildNumber='26200'})) '25H2 client accepted'
+Assert (-not (Test-25H2 ([pscustomobject]@{ProductType=3;BuildNumber='26200'}))) 'Server rejected'
+Assert (-not (Test-25H2 ([pscustomobject]@{ProductType=1;BuildNumber='26100'}))) 'Other Windows builds rejected'
+$batch=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'main 1.bat') -Raw
+Assert ($batch -notmatch '(?im)^\s*(set /p|choice\s)') 'Batch automatically runs without a numbered selection menu'
+Assert ($batch -match 'Windows Update and Defender' -and $batch -match '-Action Backup') 'Security stages retained after mandatory backup'
+Assert ($batch -notmatch '(?im)^\s*>>') 'Log redirections stay on their command lines'
+$registryLines=@($batch -split '\r?\n' | Where-Object {$_ -match '^reg(?:\.exe)? add '})
+Assert ($registryLines.Count -gt 40) 'Original batch preference set retained, beyond the six-tweak edition'
+Assert (@($registryLines | Where-Object {$_ -notmatch '\|\| call :Failed'}).Count -eq 0) 'Every native registry command checks its exit code'
+$labels=@([regex]::Matches($batch,'(?im)^:([A-Za-z][A-Za-z0-9]*)') | ForEach-Object {$_.Groups[1].Value})
+foreach($target in @([regex]::Matches($batch,'(?i)(?:goto|call)\s+:([A-Za-z][A-Za-z0-9]*)') | ForEach-Object {$_.Groups[1].Value} | Select-Object -Unique)){
+    Assert ($target -in $labels) "Batch target $target exists"
+}
+$runtime=(Get-Content (Join-Path $PSScriptRoot 'Sometime.ps1') -Raw)+$batch
+Assert ($runtime -notmatch '(?i)nvidiaProfileInspector|importProfile|QuakedOptimizedNV|PowerMizer|nvlddmkm|bcdedit\s|wmic\s|NSudo|takeown\s|icacls\s|shutdown\s+/r') 'NVIDIA/boot overrides, legacy WMIC, ownership bypass and forced restart absent'
+$apps=@(Get-Content (Join-Path $PSScriptRoot 'Apps.txt'))
+Assert ($apps.Count -gt 30 -and ($apps -join ' ') -notmatch '(?i)WindowsStore|StorePurchase|HEIF|VP9|WebMedia|Webp|Realtek|HPAudio|QuickAssist|WindowsTerminal|ScreenSketch') 'Broad app list retained while Store, codecs, device controls and recovery tools are excluded'
+Assert ('wuauserv' -in @(Get-UpdateServices) -and 'BITS' -in @(Get-UpdateServices)) 'Windows Update disable targets retained'
+Assert ((@(Get-BackgroundServices) -join ' ') -notmatch 'WlanSvc|Spooler|bthserv|BDESVC|WbioSrvc|TrustedInstaller') 'Essential device, encryption and servicing services excluded'
+
+# Mock Defender for three outcomes; never invoke the installed Defender cmdlets.
+$script:tamper=$true;$script:realtime=$true;$script:setCalls=0;$script:ignoreChange=$false
+function Get-MpComputerStatus{[pscustomobject]@{IsTamperProtected=$script:tamper;RealTimeProtectionEnabled=$script:realtime}}
+function Set-MpPreference{param([bool]$DisableRealtimeMonitoring);$script:setCalls++;if(-not $script:ignoreChange){$script:realtime=-not $DisableRealtimeMonitoring}}
+Assert-Throws {Disable-DefenderRealtime} 'tamper protection'
+Assert ($script:setCalls -eq 0) 'Tamper protection is not bypassed'
+$script:tamper=$false
+Disable-DefenderRealtime
+Assert (-not $script:realtime -and $script:setCalls -eq 1) 'Defender disable result is verified (mocked)'
+$script:realtime=$true;$script:ignoreChange=$true
+Assert-Throws {Disable-DefenderRealtime} 'remains enabled'
+
+$script:mockService=[pscustomobject]@{Status='Running';StartType='Automatic'}
+function Get-Service{param($Name,$ErrorAction);if($Name -ne 'Missing'){return $script:mockService}}
+function Set-Service{param($Name,$StartupType);$script:mockService.StartType=$StartupType}
+function Stop-Service{param($Name,[switch]$Force);$script:mockService.Status='Stopped'}
+Disable-ListedServices @('Mock','Missing')
+Assert ($script:mockService.StartType -eq 'Disabled' -and $script:mockService.Status -eq 'Stopped') 'Service startup and running state both verified (mocked)'
+function Set-Service{param($Name,$StartupType);throw 'Access denied'}
+Assert-Throws {Disable-ListedServices @('Mock')} 'could not be disabled'
+
 . (Join-Path $PSScriptRoot 'Activation.ps1')
-$script:launches=0
-$script:answer=''
-function Read-Host { param($Prompt); return $script:answer }
-function Start-MasProcess { $script:launches++; return [pscustomobject]@{ ExitCode=0 } }
+$script:launches=0;$script:answer=''
+function Read-Host{param($Prompt);$script:answer}
+function Start-MasProcess{$script:launches++;[pscustomobject]@{ExitCode=0}}
 Show-ActivationOption
-Assert ($script:launches -eq 0) 'Activation cancellation never launches remote code'
-$script:answer='yes'
-Show-ActivationOption
-Assert ($script:launches -eq 0) 'Activation requires exact confirmation'
-$script:answer='LAUNCH MAS'
-Show-ActivationOption
-Assert ($script:launches -eq 1) 'Confirmed activation invokes isolated launcher once (mocked)'
-Write-Host 'All isolated tests passed. No real registry writes or optimiser actions were executed.'
-
-
+Assert ($script:launches -eq 0) 'Cancelling activation runs nothing'
+$script:answer='LAUNCH MAS';Show-ActivationOption
+Assert ($script:launches -eq 1) 'Activation is a separately confirmed launcher (mocked)'
+Write-Host 'All checks passed. No real registry, service, Defender, app, installer or cleanup operations ran.'

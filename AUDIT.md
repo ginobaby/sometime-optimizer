@@ -1,3 +1,6 @@
+> **Scope update, 2026-09-08:** The table below records the initial audit and six-preference rewrite. The owner subsequently requested a return to the original automatic batch flow and explicitly retained Windows Update/Defender disabling. The current edition retains 68 original-style registry commands, selected background services and 44 app-removal patterns, with warnings and checked helper stages. It retains the NVIDIA/display and system-file-deletion removals. Current behavior and recovery limits are described in README.md; the historical table is not a list of every current decision.
+>
+> Similar-tool references reviewed: [WinUtil](https://github.com/ChrisTitusTech/winutil) separates essential/advanced tweaks and documents disabling updates as not recommended; [Win11Debloat defaults](https://github.com/Raphire/Win11Debloat/wiki/Default-Settings) documents an automatic defaults workflow. These were design references, not imported code or evidence that the owner's requested settings are safe.
 # Review of the supplied optimiser
 
 Reviewed 2026-09-07. Line numbers refer to the locally archived original, SHA256 `97247B1899CA0B818A2EAEC6EAA4EB5F3C70156CB519AAD74A93354BD8F970BE`.
