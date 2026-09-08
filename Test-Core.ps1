@@ -62,4 +62,71 @@ Show-ActivationOption
 Assert ($script:launches -eq 0) 'Cancelling activation runs nothing'
 $script:answer='LAUNCH MAS';Show-ActivationOption
 Assert ($script:launches -eq 1) 'Activation is a separately confirmed launcher (mocked)'
+
+
+# Restore-point verification: no calls reach System Restore.
+function Enable-ComputerRestore { param($Drive) }
+$script:points=@();$script:checkpointCalls=0;$script:createPoint=$false
+function Get-ComputerRestorePoint { $script:points }
+function New-MockPoint($Number,$Date) {
+    [pscustomobject]@{SequenceNumber=$Number;Description='SOMETIME before original-flow tweaks';CreationTime=[Management.ManagementDateTimeConverter]::ToDmtfDateTime($Date)}
+}
+function Checkpoint-Computer {
+    param($Description,$RestorePointType)
+    $script:checkpointCalls++
+    if($script:createPoint){$script:points+=New-MockPoint 99 (Get-Date)}
+}
+$script:points=@(New-MockPoint 1 (Get-Date).AddDays(-2))
+Assert-Throws {Confirm-RestorePoint} 'could not be verified'
+$script:createPoint=$true
+Confirm-RestorePoint
+Assert ($script:points.Count -eq 2) 'A newly created restore point is verified (mocked)'
+$script:checkpointCalls=0
+Confirm-RestorePoint
+Assert ($script:checkpointCalls -eq 0) 'Recent restore point is reused without another creation (mocked)'
+$source=Get-Content (Join-Path $PSScriptRoot 'Sometime.ps1') -Raw
+Assert ($source -match "backup-complete.flag.*PathType Leaf") 'Stages require a completed backup marker'
+$backupBody=${function:Save-OriginalBackups}.ToString()
+Assert ($backupBody.IndexOf('backup-complete.flag') -gt $backupBody.IndexOf('Confirm-RestorePoint')) 'Completion marker follows restore verification'
+
+# App removal: only fake packages are enumerated, removed and verified.
+$script:removedApps=@();$script:retainApp=$false
+function Get-AppxPackage {
+    param($Name)
+    if($Name -eq '*Microsoft.BingWeather*' -or $Name -eq '*BingWeather*') {
+        [pscustomobject]@{Name='TestWeather';PackageFullName='TestWeather_1';IsFramework=$false;NonRemovable=$false}
+        [pscustomobject]@{Name='TestFramework';PackageFullName='TestFramework_1';IsFramework=$true;NonRemovable=$false}
+        [pscustomobject]@{Name='TestProtected';PackageFullName='TestProtected_1';IsFramework=$false;NonRemovable=$true}
+    } elseif($Name -eq 'TestWeather' -and $script:retainApp){[pscustomobject]@{Name='TestWeather'}}
+}
+function Remove-AppxPackage {param($Package);$script:removedApps+= $Package}
+Remove-ListedApps
+Assert ($script:removedApps.Count -eq 1 -and $script:removedApps[0] -eq 'TestWeather_1') 'App removal excludes framework and protected packages (mocked)'
+$script:retainApp=$true
+Assert-Throws {Remove-ListedApps} 'app removals failed'
+
+# Runtime installer: download, signature and process launch are all replaced.
+$originalArchitecture=$env:PROCESSOR_ARCHITECTURE
+try {
+    $env:PROCESSOR_ARCHITECTURE='AMD64'
+    $script:runtimeState=$null;$script:installerCalls=0;$script:installerExit=0
+    $script:signature=[pscustomobject]@{Status='NotSigned';SignerCertificate=$null}
+    function Get-ItemProperty {param($Path,$ErrorAction);$script:runtimeState}
+    function Invoke-WebRequest {param($Uri,[switch]$UseBasicParsing,$OutFile)}
+    function Get-AuthenticodeSignature {param($LiteralPath);$script:signature}
+    function Start-Process {param($FilePath,$ArgumentList,[switch]$Wait,[switch]$PassThru);$script:installerCalls++;[pscustomobject]@{ExitCode=$script:installerExit}}
+    Assert-Throws {Install-MicrosoftRuntime $PSScriptRoot} 'signature verification failed'
+    Assert ($script:installerCalls -eq 0) 'Unsigned runtime is never executed'
+    $script:signature=[pscustomobject]@{Status='Valid';SignerCertificate=[pscustomobject]@{Subject='CN=Unrelated, O=Other Company, C=US'}}
+    Assert-Throws {Install-MicrosoftRuntime $PSScriptRoot} 'signature verification failed'
+    $script:signature.SignerCertificate.Subject='CN=Microsoft Corporation, O=Microsoft Corporation, C=US'
+    $script:installerExit=1603
+    Assert-Throws {Install-MicrosoftRuntime $PSScriptRoot} 'installer failed: 1603'
+    $script:installerExit=3010
+    Install-MicrosoftRuntime $PSScriptRoot
+    Assert ($script:installerCalls -eq 2) 'Installer success requiring restart is accepted (mocked)'
+    $script:runtimeState=[pscustomobject]@{Installed=1}
+    Install-MicrosoftRuntime $PSScriptRoot
+    Assert ($script:installerCalls -eq 2) 'Installed runtime is skipped (mocked)'
+} finally {$env:PROCESSOR_ARCHITECTURE=$originalArchitecture}
 Write-Host 'All checks passed. No real registry, service, Defender, app, installer or cleanup operations ran.'

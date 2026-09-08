@@ -56,8 +56,10 @@ Isolated tests:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\Test-Core.ps1
+powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\Test-Batch.ps1
 ```
 
-The tests parse scripts, check the batch flow and use mocked service, Defender and activation commands. They never apply actual tweaks. Live 25H2 apply/recovery and hardware testing remain outstanding; passing these tests is not a stability or performance guarantee. `Core.ps1` is a retired file from the earlier edition and is not used.
+The tests parse scripts and use mocked service, Defender, restore-point, app removal, runtime installer and activation commands. The batch harness replaces system commands and checks success, validation failure, backup failure, security failure and registry failure paths, including exit codes and warning files. They never apply actual tweaks. Live 25H2 apply/recovery and hardware testing remain outstanding; passing these tests is not a stability or performance guarantee. `Core.ps1` is a retired file from the earlier edition and is not used.
 
 The original user-supplied file credits SOMETIME, Oneclick/QuakedK, CTT and Privacy is Freedom. A local archive is excluded from publication. No external profile/tool ZIP is redistributed. See [AUDIT.md](AUDIT.md) for the original review and scope changes.
+

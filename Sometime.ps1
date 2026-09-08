@@ -69,19 +69,31 @@ function Save-OriginalBackups([string]$Directory) {
     & "$env:SystemRoot\System32\powercfg.exe" /getactivescheme | Set-Content -LiteralPath (Join-Path $Directory 'power-plan.txt')
     if($LASTEXITCODE -ne 0){ throw 'Could not capture the active power plan.' }
     Show-Result "Registry and service snapshots saved to $Directory" 'Green'
+    Confirm-RestorePoint
+    'Backups verified; stage log follows.' | Set-Content -LiteralPath (Join-Path $Directory 'run.log')
+    # Written last so partial backups cannot authorise a stage.
+    'Complete' | Set-Content -LiteralPath (Join-Path $Directory 'backup-complete.flag')
+}
+function Confirm-RestorePoint {
     Enable-ComputerRestore -Drive ($env:SystemDrive+'\')
-    $recent=@(Get-ComputerRestorePoint | Where-Object {
+    $before=@(Get-ComputerRestorePoint)
+    $recent=@($before | Where-Object {
         [Management.ManagementDateTimeConverter]::ToDateTime($_.CreationTime) -gt (Get-Date).AddHours(-24)
     } | Sort-Object SequenceNumber -Descending)
     if($recent.Count) {
         Show-Result "Using existing restore point $($recent[0].SequenceNumber) from the last 24 hours. It may predate other recent changes." 'Yellow'
     } else {
+        $started=Get-Date
+        $previousNumbers=@($before | ForEach-Object { $_.SequenceNumber })
         Checkpoint-Computer -Description 'SOMETIME before original-flow tweaks' -RestorePointType MODIFY_SETTINGS
-        $created=@(Get-ComputerRestorePoint | Where-Object Description -eq 'SOMETIME before original-flow tweaks')
+        $created=@(Get-ComputerRestorePoint | Where-Object {
+            $_.Description -eq 'SOMETIME before original-flow tweaks' -and
+            $_.SequenceNumber -notin $previousNumbers -and
+            [Management.ManagementDateTimeConverter]::ToDateTime($_.CreationTime) -ge $started.AddSeconds(-2)
+        })
         if(-not $created.Count){ throw 'Restore point could not be verified. No tweaks started.' }
         Show-Result 'Restore point created and verified.' 'Green'
     }
-    'Backups verified; stage log follows.' | Set-Content -LiteralPath (Join-Path $Directory 'run.log')
 }
 function Remove-ListedApps {
     Show-Result 'WARNING: removing listed apps for the current user can remove app data/features. Reinstallation may require Store access and a licence. Registry backups do not restore apps.' 'Yellow'
@@ -105,12 +117,12 @@ function Remove-ListedApps {
 function Install-MicrosoftRuntime([string]$Directory) {
     if($env:PROCESSOR_ARCHITECTURE -ne 'AMD64'){Show-Result 'Automatic x64 runtime installation skipped on this architecture.' 'Yellow';return}
     $runtime=Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64' -ErrorAction SilentlyContinue
-    if($runtime -and $runtime.Installed -eq 1){Show-Result 'Visual C++ x64 runtime already installed.' 'Green';return}
+    if($runtime -and $runtime.PSObject.Properties['Installed'] -and $runtime.Installed -eq 1){Show-Result 'Visual C++ x64 runtime already installed.' 'Green';return}
     [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
     $file=Join-Path $Directory 'vc_redist.x64.exe'
     Invoke-WebRequest 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -UseBasicParsing -OutFile $file
     $signature=Get-AuthenticodeSignature -LiteralPath $file
-    if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation(?:,|$)'){throw 'Runtime publisher/signature verification failed; installer not run.'}
+    if($signature.Status -ne 'Valid' -or -not $signature.SignerCertificate -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation(?:,|$)'){throw 'Runtime publisher/signature verification failed; installer not run.'}
     $process=Start-Process -FilePath $file -ArgumentList '/install /quiet /norestart' -Wait -PassThru
     if($process.ExitCode -notin @(0,3010)){throw "Microsoft runtime installer failed: $($process.ExitCode)"}
     if($process.ExitCode -eq 3010){Show-Result 'Runtime installed; restart later to finish.' 'Yellow'}else{Show-Result 'Runtime installed.' 'Green'}
@@ -120,6 +132,7 @@ function Set-PerformancePower {
     Add-Type -AssemblyName System.Windows.Forms
     if([Windows.Forms.SystemInformation]::PowerStatus.PowerLineStatus -ne 'Online'){Show-Result 'Keeping current power plan while on battery or unknown AC status.' 'Yellow';return}
     $schemes=& "$env:SystemRoot\System32\powercfg.exe" /list
+    if($LASTEXITCODE -ne 0){throw 'Could not list power plans.'}
     if(($schemes -join '') -notmatch '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c'){Show-Result 'Built-in High performance is unavailable; keeping the current plan.' 'Yellow';return}
     & "$env:SystemRoot\System32\powercfg.exe" /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
     if($LASTEXITCODE -ne 0){throw 'Power plan change failed.'}
@@ -175,7 +188,7 @@ try {
     $base=Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'SometimeOptimizer\OriginalFlow'
     if(-not $directory -or -not [IO.Path]::GetFullPath($directory).StartsWith($base+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Missing or invalid run backup directory.'}
     if($Action -eq 'Backup'){Save-OriginalBackups $directory;exit 0}
-    if(-not (Test-Path -LiteralPath (Join-Path $directory 'registry-manifest.clixml'))){throw 'Run the backup stage first.'}
+    if(-not (Test-Path -LiteralPath (Join-Path $directory 'backup-complete.flag') -PathType Leaf) -or -not (Test-Path -LiteralPath (Join-Path $directory 'registry-manifest.clixml') -PathType Leaf)){throw 'Run the backup stage first.'}
     Start-Transcript -LiteralPath (Join-Path $directory 'run.log') -Append | Out-Null;$transcribing=$true
     switch($Action){
         'Security' {
